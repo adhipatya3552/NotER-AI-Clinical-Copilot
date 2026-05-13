@@ -208,7 +208,13 @@ export default function HomePage() {
 
       // Start the Vapi call using the pre-configured NOTER assistant
       // (transcriber: nova-3, language: multi (Hindi/English/Hinglish), bgDenoise: off, silenceTimeout: 1800s)
-      const assistantId = "cc986c3c-d3b9-4e41-890d-67c21ac57379";
+      const assistantId = process.env.NEXT_PUBLIC_VAPI_ASSISTANT_ID;
+      if (!assistantId || assistantId === "your_vapi_assistant_id_here") {
+        console.error("Vapi Assistant ID is missing."); 
+        setStatus("idle");
+        alert("Please configure NEXT_PUBLIC_VAPI_ASSISTANT_ID in .env");
+        return;
+      }
       await vapi.start(assistantId);
     } catch (error) {
       console.error("Failed to start Vapi:", error);

@@ -24,22 +24,33 @@ interface Props {
   doctorEmail: string;
 }
 
+interface EditData {
+  summary: string;
+  soap: SOAPNotes;
+  prescriptions: PrescriptionItem[];
+}
+
 export default function DashboardClient({ records, doctorEmail }: Props) {
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editData, setEditData] = useState<EditData | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [localRecords, setLocalRecords] = useState<SearchResult[]>(records);
   const [, startTransition] = useTransition();
 
   // Deduplicate records that share the same patient+date+summary fingerprint.
   // This cleans up any historical duplicates already stored in Qdrant.
   const uniqueRecords = useMemo(() => {
     const seen = new Set<string>();
-    return records.filter((r) => {
+    return localRecords.filter((r) => {
       const fingerprint = `${r.patientName}|${r.date?.slice(0, 10)}|${r.summary?.slice(0, 80)}`;
       if (seen.has(fingerprint)) return false;
       seen.add(fingerprint);
       return true;
     });
-  }, [records]);
+  }, [localRecords]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -100,9 +111,10 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
 <title>Clinical Report — ${record.patientName} — notER</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-  @page { size: A4; margin: 18mm 18mm 22mm 18mm; }
+  @page { size: A4; margin: 25mm 25mm 28mm 25mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Inter', system-ui, sans-serif; font-size: 11pt; color: #1a1a2e; line-height: 1.6; background: #fff; }
+  body { font-family: 'Inter', system-ui, sans-serif; font-size: 11pt; color: #1a1a2e; line-height: 1.6; background: #fff; padding: 0; }
+  .page-wrap { padding: 8mm 6mm; }
   .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom:2.5px solid #E11D48; padding-bottom:12px; margin-bottom:18px; }
   .header-left h1 { font-size:22pt; font-weight:700; color:#E11D48; letter-spacing:-0.5px; }
   .header-left p { font-size:9pt; color:#666; margin-top:2px; }
@@ -135,6 +147,7 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head>
 <body>
+  <div class="page-wrap">
   <div class="header">
     <div class="header-left">
       <h1>notER</h1>
@@ -163,6 +176,7 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
   <div class="footer">
     <div class="footer-note">Reprinted from notER — AI Clinical Copilot<br/>Original: ${date} ${time}<br/>Reprinted: ${new Date().toLocaleString("en-IN")}</div>
     <div class="signature"><div class="signature-line">Doctor's Signature</div></div>
+  </div>
   </div>
   <script>window.onload=function(){document.title="notER-reprint-${record.id}.pdf";window.print();}<\/script>
 </body></html>`;
@@ -195,9 +209,10 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
 <html><head><title>Prescription — ${record.patientName} — notER</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-  @page { size: A5; margin: 15mm; }
+  @page { size: A5; margin: 20mm; }
   * { box-sizing:border-box; margin:0; padding:0; }
   body { font-family:'Inter',sans-serif; color:#1a1a2e; font-size:10pt; }
+  .page-wrap { padding: 6mm 4mm; }
   .rx-header { text-align:center; border-bottom:3px double #E11D48; padding-bottom:12px; margin-bottom:14px; }
   .rx-header h1 { font-size:18pt; color:#E11D48; font-weight:700; }
   .rx-header p { font-size:9pt; color:#666; margin-top:3px; }
@@ -215,6 +230,7 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
   @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
 </style></head>
 <body>
+  <div class="page-wrap">
   <div class="rx-header">
     <h1>notER</h1>
     <p>AI Clinical Copilot — Cardiology</p>
@@ -231,6 +247,7 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
   </table>
   <div class="sig-line"><div class="sig">Doctor's Signature</div></div>
   <div class="footer">Reprinted from notER — AI Clinical Copilot &mdash; Original: ${date}</div>
+  </div>
   <script>window.onload=function(){window.print();}<\/script>
 </body></html>`;
 
@@ -289,7 +306,7 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
       </nav>
 
       {/* ── Content ─────────────────────────────── */}
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 40px" }}>
 
         {/* Stats */}
         <div style={{
@@ -452,113 +469,302 @@ export default function DashboardClient({ records, doctorEmail }: Props) {
                   {isExpanded && (
                     <div style={{
                       borderTop: "1px solid var(--border)",
-                      padding: "20px",
+                      padding: "24px 28px",
                       animation: "fadeIn 0.25s ease-out forwards",
                     }}>
-                      {/* SOAP */}
-                      {soap && (
+                      {/* ── Edit Mode ──────────────────────── */}
+                      {editingId === record.id && editData ? (
                         <>
-                          <div className="card__title" style={{ marginBottom: 14 }}>
-                            🧾 SOAP Notes
-                          </div>
-                          <div style={{
-                            display: "grid", gridTemplateColumns: "repeat(2,1fr)",
-                            gap: 10, marginBottom: 24,
-                          }}>
-                            {([
-                              { key: "s", label: "S — Subjective", value: soap.subjective },
-                              { key: "o", label: "O — Objective",  value: soap.objective },
-                              { key: "a", label: "A — Assessment", value: soap.assessment },
-                              { key: "p", label: "P — Plan",       value: soap.plan },
-                            ] as { key: string; label: string; value: string }[]).map((s) => (
-                              <div key={s.key} className={`soap-card soap-card--${s.key}`}>
-                                <div className="soap-card__label">{s.label}</div>
-                                <div className="soap-card__text">{s.value || "Not recorded"}</div>
+                          {/* Summary */}
+                          <div className="card__title" style={{ marginBottom: 10 }}>✏️ Edit Summary</div>
+                          <textarea
+                            value={editData.summary}
+                            onChange={(e) => setEditData({ ...editData, summary: e.target.value })}
+                            rows={3}
+                            style={{
+                              width: "100%", padding: "10px 14px",
+                              background: "var(--surface)", border: "1.5px solid var(--accent)",
+                              borderRadius: 8, color: "var(--text-primary)",
+                              fontSize: 13, fontFamily: "inherit", resize: "vertical",
+                              outline: "none", marginBottom: 20,
+                            }}
+                          />
+
+                          {/* SOAP */}
+                          <div className="card__title" style={{ marginBottom: 12 }}>🧾 SOAP Notes</div>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+                            {(["subjective", "objective", "assessment", "plan"] as (keyof SOAPNotes)[]).map((field) => (
+                              <div key={field}>
+                                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--text-tertiary)", marginBottom: 5, letterSpacing: "0.06em" }}>
+                                  {field.charAt(0).toUpperCase() + field.slice(1)}
+                                </div>
+                                <textarea
+                                  value={editData.soap[field]}
+                                  onChange={(e) => setEditData({ ...editData, soap: { ...editData.soap, [field]: e.target.value } })}
+                                  rows={4}
+                                  style={{
+                                    width: "100%", padding: "8px 12px",
+                                    background: "var(--surface)", border: "1px solid var(--border-strong)",
+                                    borderRadius: 8, color: "var(--text-primary)",
+                                    fontSize: 13, fontFamily: "inherit", resize: "vertical",
+                                    outline: "none", transition: "border-color 0.2s",
+                                  }}
+                                  onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
+                                  onBlur={(e) => (e.target.style.borderColor = "var(--border-strong)")}
+                                />
                               </div>
                             ))}
                           </div>
+
+                          {/* Prescriptions */}
+                          <div className="card__title" style={{ marginBottom: 12 }}>💊 Prescriptions</div>
+                          <table className="rx-table" style={{ marginBottom: 8 }}>
+                            <thead>
+                              <tr>{["#", "Drug", "Dosage", "Frequency", "Duration", ""].map((h) => <th key={h}>{h}</th>)}</tr>
+                            </thead>
+                            <tbody>
+                              {editData.prescriptions.map((rx, i) => (
+                                <tr key={i}>
+                                  <td className="rx-num">{i + 1}</td>
+                                  {(["drug", "dosage", "frequency", "duration"] as (keyof PrescriptionItem)[]).map((f) => (
+                                    <td key={f}>
+                                      <input
+                                        value={rx[f]}
+                                        onChange={(e) => {
+                                          const updated = editData.prescriptions.map((p, j) => j === i ? { ...p, [f]: e.target.value } : p);
+                                          setEditData({ ...editData, prescriptions: updated });
+                                        }}
+                                        style={{
+                                          width: "100%", padding: "4px 8px",
+                                          background: "var(--surface)", border: "1px solid var(--border)",
+                                          borderRadius: 6, color: "var(--text-primary)",
+                                          fontSize: 13, fontFamily: "inherit", outline: "none",
+                                        }}
+                                        onFocus={(e) => (e.target.style.borderColor = "var(--accent)")}
+                                        onBlur={(e) => (e.target.style.borderColor = "var(--border)")}
+                                      />
+                                    </td>
+                                  ))}
+                                  <td>
+                                    <button
+                                      onClick={() => setEditData({ ...editData, prescriptions: editData.prescriptions.filter((_, j) => j !== i) })}
+                                      style={{ background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: 16, padding: "0 4px" }}
+                                    >×</button>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <button
+                            onClick={() => setEditData({ ...editData, prescriptions: [...editData.prescriptions, { drug: "", dosage: "", frequency: "", duration: "" }] })}
+                            style={{ fontSize: 12, color: "var(--accent)", background: "none", border: "1px dashed var(--accent-border)", borderRadius: 6, padding: "5px 12px", cursor: "pointer", marginBottom: 20 }}
+                          >+ Add Row</button>
+
+                          {/* Save / Cancel */}
+                          <div style={{ display: "flex", gap: 10, paddingTop: 16, borderTop: "1px solid var(--border)", alignItems: "center" }}>
+                            <button
+                              disabled={isSaving}
+                              onClick={async () => {
+                                if (!editData || !editingId) return;
+                                setIsSaving(true);
+                                try {
+                                  const res = await fetch(`/api/records/${editingId}`, {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      summary: editData.summary,
+                                      soapNotes: JSON.stringify(editData.soap),
+                                      prescriptions: JSON.stringify(editData.prescriptions),
+                                    }),
+                                  });
+                                  if (!res.ok) {
+                                    const err = await res.json().catch(() => ({}));
+                                    throw new Error(err.error || `Server error ${res.status}`);
+                                  }
+                                  // Optimistically update local list so UI reflects changes without reload
+                                  setLocalRecords((prev) =>
+                                    prev.map((r) =>
+                                      r.id === editingId
+                                        ? {
+                                            ...r,
+                                            summary: editData.summary,
+                                            soapNotes: JSON.stringify(editData.soap),
+                                            prescriptions: JSON.stringify(editData.prescriptions),
+                                          }
+                                        : r
+                                    )
+                                  );
+                                  setEditingId(null);
+                                  setEditData(null);
+                                } catch (err) {
+                                  alert(`❌ Failed to save: ${err instanceof Error ? err.message : "Unknown error"}`);
+                                } finally {
+                                  setIsSaving(false);
+                                }
+                              }}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 20px",
+                                background: isSaving ? "var(--bg-elevated)" : "linear-gradient(135deg, var(--accent), var(--accent-hover))",
+                                border: "none", borderRadius: "var(--radius-md)",
+                                color: isSaving ? "var(--text-tertiary)" : "#fff",
+                                fontSize: 13, fontWeight: 600,
+                                cursor: isSaving ? "not-allowed" : "pointer",
+                                opacity: isSaving ? 0.7 : 1,
+                                transition: "all 0.2s",
+                              }}
+                            >{isSaving ? "⏳ Saving…" : "✅ Save Changes"}</button>
+                            <button
+                              onClick={() => { setEditingId(null); setEditData(null); }}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                                background: "var(--bg-elevated)", border: "1px solid var(--border-strong)",
+                                borderRadius: "var(--radius-md)", color: "var(--text-primary)",
+                                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                              }}
+                            >Cancel</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {/* SOAP — view mode */}
+                          {soap && (
+                            <>
+                              <div className="card__title" style={{ marginBottom: 14 }}>🧾 SOAP Notes</div>
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 10, marginBottom: 24 }}>
+                                {([
+                                  { key: "s", label: "S — Subjective", value: soap.subjective },
+                                  { key: "o", label: "O — Objective",  value: soap.objective },
+                                  { key: "a", label: "A — Assessment", value: soap.assessment },
+                                  { key: "p", label: "P — Plan",       value: soap.plan },
+                                ] as { key: string; label: string; value: string }[]).map((s) => (
+                                  <div key={s.key} className={`soap-card soap-card--${s.key}`}>
+                                    <div className="soap-card__label">{s.label}</div>
+                                    <div className="soap-card__text">{s.value || "Not recorded"}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
+
+                          {/* Prescriptions — view mode */}
+                          <div className="card__title" style={{ marginBottom: 12 }}>💊 Prescriptions</div>
+                          {prescriptions.length > 0 ? (
+                            <table className="rx-table">
+                              <thead>
+                                <tr>{["#", "Drug", "Dosage", "Frequency", "Duration"].map((h) => <th key={h}>{h}</th>)}</tr>
+                              </thead>
+                              <tbody>
+                                {prescriptions.map((rx, i) => (
+                                  <tr key={i}>
+                                    <td className="rx-num">{i + 1}</td>
+                                    <td className="rx-drug">{rx.drug}</td>
+                                    <td>{rx.dosage}</td>
+                                    <td>{rx.frequency}</td>
+                                    <td>{rx.duration}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          ) : (
+                            <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic" }}>
+                              No prescriptions recorded for this consultation.
+                            </p>
+                          )}
+
+                          {/* ── Action Bar ─────────────── */}
+                          <div style={{ display: "flex", gap: 10, marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--border)", flexWrap: "wrap" }}>
+                            {/* Edit button */}
+                            <button
+                              id={`edit-record-${record.id}`}
+                              onClick={() => {
+                                setEditingId(record.id);
+                                setEditData({
+                                  summary: record.summary,
+                                  soap: soap ?? { subjective: "", objective: "", assessment: "", plan: "" },
+                                  prescriptions: prescriptions,
+                                });
+                              }}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                                background: "var(--bg-elevated)", border: "1px solid var(--border-strong)",
+                                borderRadius: "var(--radius-md)", color: "var(--text-primary)",
+                                fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                transition: "background 0.15s, border-color 0.15s",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "#60a5fa"; e.currentTarget.style.background = "var(--bg-card)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+                            >✏️ Edit</button>
+
+                            <button
+                              id={`reprint-report-${record.id}`}
+                              onClick={() => reprintReport(record)}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                                background: "linear-gradient(135deg, var(--accent), var(--accent-hover))",
+                                border: "none", borderRadius: "var(--radius-md)",
+                                color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                boxShadow: "0 2px 10px rgba(225,29,72,0.25)", transition: "transform 0.15s, box-shadow 0.15s",
+                              }}
+                              onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(225,29,72,0.35)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(225,29,72,0.25)"; }}
+                            >📄 Reprint Full Report</button>
+
+                            {prescriptions.length > 0 && (
+                              <button
+                                id={`reprint-rx-${record.id}`}
+                                onClick={() => reprintPrescription(record)}
+                                style={{
+                                  display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                                  background: "var(--bg-elevated)", border: "1px solid var(--border-strong)",
+                                  borderRadius: "var(--radius-md)", color: "var(--text-primary)",
+                                  fontSize: 13, fontWeight: 600, cursor: "pointer",
+                                  transition: "background 0.15s, border-color 0.15s",
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-card)"; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
+                              >💊 Reprint Prescription</button>
+                            )}
+
+                            {/* Delete button — pushed to far right */}
+                            <button
+                              id={`delete-record-${record.id}`}
+                              disabled={isDeleting === record.id}
+                              onClick={async () => {
+                                if (!confirm(`Delete the consultation record for ${record.patientName}? This cannot be undone.`)) return;
+                                setIsDeleting(record.id);
+                                try {
+                                  const res = await fetch(`/api/records/${record.id}`, { method: "DELETE" });
+                                  if (!res.ok) {
+                                    const err = await res.json().catch(() => ({}));
+                                    throw new Error(err.error || `Server error ${res.status}`);
+                                  }
+                                  setLocalRecords((prev) => prev.filter((r) => r.id !== record.id));
+                                  setExpandedId(null);
+                                } catch (err) {
+                                  alert(`❌ Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
+                                } finally {
+                                  setIsDeleting(null);
+                                }
+                              }}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px",
+                                marginLeft: "auto",
+                                background: "transparent",
+                                border: "1px solid #f87171",
+                                borderRadius: "var(--radius-md)",
+                                color: "#f87171",
+                                fontSize: 13, fontWeight: 600,
+                                cursor: isDeleting === record.id ? "not-allowed" : "pointer",
+                                opacity: isDeleting === record.id ? 0.6 : 1,
+                                transition: "background 0.15s, color 0.15s",
+                              }}
+                              onMouseEnter={(e) => { if (isDeleting !== record.id) { e.currentTarget.style.background = "#f87171"; e.currentTarget.style.color = "#fff"; } }}
+                              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#f87171"; }}
+                            >{isDeleting === record.id ? "🗑️ Deleting…" : "🗑️ Delete"}</button>
+                          </div>
+
                         </>
                       )}
-
-                      {/* Prescriptions */}
-                      <div className="card__title" style={{ marginBottom: 12 }}>
-                        💊 Prescriptions
-                      </div>
-
-                      {prescriptions.length > 0 ? (
-                        <table className="rx-table">
-                          <thead>
-                            <tr>
-                              {["#", "Drug", "Dosage", "Frequency", "Duration"].map((h) => (
-                                <th key={h}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {prescriptions.map((rx, i) => (
-                              <tr key={i}>
-                                <td className="rx-num">{i + 1}</td>
-                                <td className="rx-drug">{rx.drug}</td>
-                                <td>{rx.dosage}</td>
-                                <td>{rx.frequency}</td>
-                                <td>{rx.duration}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      ) : (
-                        <p style={{ fontSize: 13, color: "var(--text-tertiary)", fontStyle: "italic" }}>
-                          No prescriptions recorded for this consultation.
-                        </p>
-                      )}
-
-                      {/* ── Reprint Action Bar ─────────────── */}
-                      <div style={{
-                        display: "flex", gap: 10, marginTop: 20,
-                        paddingTop: 16,
-                        borderTop: "1px solid var(--border)",
-                        flexWrap: "wrap",
-                      }}>
-                        <button
-                          id={`reprint-report-${record.id}`}
-                          onClick={() => reprintReport(record)}
-                          style={{
-                            display: "inline-flex", alignItems: "center", gap: 6,
-                            padding: "8px 16px",
-                            background: "linear-gradient(135deg, var(--accent), var(--accent-hover))",
-                            border: "none", borderRadius: "var(--radius-md)",
-                            color: "#fff", fontSize: 13, fontWeight: 600,
-                            cursor: "pointer",
-                            boxShadow: "0 2px 10px rgba(225,29,72,0.25)",
-                            transition: "transform 0.15s, box-shadow 0.15s",
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.transform = "translateY(-1px)"; e.currentTarget.style.boxShadow = "0 4px 16px rgba(225,29,72,0.35)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 10px rgba(225,29,72,0.25)"; }}
-                        >
-                          📄 Reprint Full Report
-                        </button>
-
-                        {prescriptions.length > 0 && (
-                          <button
-                            id={`reprint-rx-${record.id}`}
-                            onClick={() => reprintPrescription(record)}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: 6,
-                              padding: "8px 16px",
-                              background: "var(--bg-elevated)",
-                              border: "1px solid var(--border-strong)",
-                              borderRadius: "var(--radius-md)",
-                              color: "var(--text-primary)", fontSize: 13, fontWeight: 600,
-                              cursor: "pointer",
-                              transition: "background 0.15s, border-color 0.15s",
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--bg-card)"; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.background = "var(--bg-elevated)"; }}
-                          >
-                            💊 Reprint Prescription
-                          </button>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>

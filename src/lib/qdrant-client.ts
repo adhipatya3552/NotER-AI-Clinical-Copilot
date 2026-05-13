@@ -249,3 +249,63 @@ export async function getAllConsultations(
     return { records: [], nextOffset: null };
   }
 }
+// Update a stored consultation's editable fields
+export async function updateConsultation(
+  id: string,
+  updates: {
+    summary: string;
+    soapNotes: string;      // JSON string
+    prescriptions: string;  // JSON string
+    keywords?: string[];
+  }
+): Promise<boolean> {
+  const qdrant = getQdrantClient();
+  if (!qdrant) return false;
+
+  try {
+    await ensureCollection();
+
+    // Re-generate vector from updated content so search stays accurate
+    const vector = textToVector(
+      `${updates.summary} ${(updates.keywords ?? []).join(" ")}`
+    );
+
+    // Overwrite the vector
+    await qdrant.updateVectors(COLLECTION_NAME, {
+      points: [{ id, vector }],
+    });
+
+    // Overwrite only the edited payload fields (encrypted)
+    await qdrant.setPayload(COLLECTION_NAME, {
+      payload: {
+        summary:       encrypt(updates.summary),
+        soapNotes:     encrypt(updates.soapNotes),
+        prescriptions: encrypt(updates.prescriptions),
+        _encrypted:    true,
+      },
+      points: [id],
+    });
+
+    return true;
+  } catch (error) {
+    console.error("Failed to update consultation:", error);
+    return false;
+  }
+}
+
+// Permanently delete a consultation by its Qdrant point ID
+export async function deleteConsultation(id: string): Promise<boolean> {
+  const qdrant = getQdrantClient();
+  if (!qdrant) return false;
+
+  try {
+    await qdrant.delete(COLLECTION_NAME, {
+      points: [id],
+      wait: true,
+    });
+    return true;
+  } catch (error) {
+    console.error("Failed to delete consultation:", error);
+    return false;
+  }
+}
