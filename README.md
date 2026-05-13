@@ -217,7 +217,7 @@ Navigate to `http://localhost:3000` → you'll be redirected to `/login`.
 
 **Default credentials:**
 ```
-Email:    12341234
+Email:    12341234@gmail.com
 Password: 12341234
 ```
 
