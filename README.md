@@ -131,7 +131,7 @@ The doctor never touches a keyboard during the consultation. The AI silently tak
 ## 📁 Project Structure
 
 ```
-NotER/
+NotER-AI-Clinical-Copilot/
 ├── src/
 │   ├── app/
 │   │   ├── api/
