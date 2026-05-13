@@ -184,8 +184,8 @@ NotER/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/adhipatya3552/NotER.git
-cd NotER
+git clone https://github.com/adhipatya3552/NotER-AI-Clinical-Copilot.git
+cd NotER-AI-Clinical-Copilot
 npm install
 ```
 
