@@ -1,4 +1,4 @@
-# notER — AI Clinical Copilot for Cardiologists
+# NotER — AI Clinical Copilot for Cardiologists
 
 <div align="center">
 
@@ -38,7 +38,7 @@
 
 ## 🏥 Overview
 
-**notER** is an AI-powered clinical copilot designed specifically for cardiologists. It passively listens to a live doctor-patient consultation using voice AI (Vapi + Deepgram), transcribes the conversation in real-time, detects cardiology-specific medical keywords, and at the end of the session — automatically generates:
+**NotER** is an AI-powered clinical copilot designed specifically for cardiologists. It passively listens to a live doctor-patient consultation using voice AI (Vapi + Deepgram), transcribes the conversation in real-time, detects cardiology-specific medical keywords, and at the end of the session — automatically generates:
 
 - 📋 **SOAP Notes** (Subjective / Objective / Assessment / Plan)
 - 💊 **Structured Prescription** (Drug, Dosage, Frequency, Duration)
@@ -131,7 +131,7 @@ The doctor never touches a keyboard during the consultation. The AI silently tak
 ## 📁 Project Structure
 
 ```
-notER/
+NotER/
 ├── src/
 │   ├── app/
 │   │   ├── api/
@@ -184,8 +184,8 @@ notER/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Uddhar204/NoteR--Clincial-Transcription-AI.git
-cd NoteR--Clincial-Transcription-AI
+git clone https://github.com/adhipatya3552/NotER.git
+cd NotER
 npm install
 ```
 
