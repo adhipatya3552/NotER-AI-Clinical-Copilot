@@ -1,8 +1,8 @@
-# notER — AI Clinical Copilot for Cardiologists
+# NotER — AI Clinical Copilot for Cardiologists
 
 <div align="center">
 
-![notER Logo](https://img.shields.io/badge/notER-AI%20Clinical%20Copilot-red?style=for-the-badge&logo=heart&logoColor=white)
+![NotER Logo](https://img.shields.io/badge/NotER-AI%20Clinical%20Copilot-red?style=for-the-badge&logo=heart&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-16.2-black?style=for-the-badge&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)
 ![Vapi](https://img.shields.io/badge/Vapi-Voice%20AI-purple?style=for-the-badge)
@@ -38,7 +38,7 @@
 
 ## 🏥 Overview
 
-**notER** is an AI-powered clinical copilot designed specifically for cardiologists. It passively listens to a live doctor-patient consultation using voice AI (Vapi + Deepgram), transcribes the conversation in real-time, detects cardiology-specific medical keywords, and at the end of the session — automatically generates:
+**NotER** is an AI-powered clinical copilot designed specifically for cardiologists. It passively listens to a live doctor-patient consultation using voice AI (Vapi + Deepgram), transcribes the conversation in real-time, detects cardiology-specific medical keywords, and at the end of the session — automatically generates:
 
 - 📋 **SOAP Notes** (Subjective / Objective / Assessment / Plan)
 - 💊 **Structured Prescription** (Drug, Dosage, Frequency, Duration)
@@ -62,6 +62,8 @@ The doctor never touches a keyboard during the consultation. The AI silently tak
 | 🔍 **Medical Keyword Detection** | 200+ cardiology terms detected and color-coded in real-time |
 | 👤 **Patient Name Tracking** | Doctor enters patient name before each consultation — records are personalized |
 | 📋 **Patient History Memory** | Consultations stored in Qdrant vector DB and recalled via semantic search |
+| 🔐 **AES-256-GCM Encryption** | Patient records encrypted at field level before storage |
+| 🌐 **Translation Support** | Auto-translates Hindi/Hinglish transcripts to English via Gemini |
 | 📊 **Patient Records Dashboard** | Searchable dashboard with expandable SOAP notes & prescription tables |
 | 🔐 **JWT Authentication** | Production-grade auth with 15-min access tokens + 7-day refresh tokens |
 | 📄 **Vector PDF Export** | Browser print-based PDF — crisp text, no blurry screenshots |
@@ -131,7 +133,7 @@ The doctor never touches a keyboard during the consultation. The AI silently tak
 ## 📁 Project Structure
 
 ```
-notER/
+NotER/
 ├── src/
 │   ├── app/
 │   │   ├── api/
@@ -142,8 +144,12 @@ notER/
 │   │   │   │       └── route.ts       # POST — Vapi event handler
 │   │   │   ├── memory/
 │   │   │   │   └── route.ts           # GET/POST — Qdrant operations
-│   │   │   └── records/
-│   │   │       └── route.ts           # GET — Dashboard record listing + search
+│   │   │   ├── records/
+│   │   │   │   ├── route.ts           # GET — Dashboard record listing + search
+│   │   │   │   └── [id]/
+│   │   │   │       └── route.ts       # PATCH/DELETE — Update or delete a record
+│   │   │   └── translate/
+│   │   │       └── route.ts           # POST — Hindi/Hinglish → English translation
 │   │   ├── actions/
 │   │   │   └── auth.ts                # Server Actions: login + logout
 │   │   ├── dashboard/
@@ -155,9 +161,10 @@ notER/
 │   │   ├── layout.tsx                 # Root layout with SEO meta tags
 │   │   └── page.tsx                   # Main consultation page
 │   ├── lib/
-│   │   ├── llm-client.ts             # KodeKloud/Gemini API client (OpenAI SDK)
+│   │   ├── llm-client.ts             # Gemini API client via KodeKloud (OpenAI SDK)
+│   │   ├── encryption.ts             # AES-256-GCM field-level encryption for records
 │   │   ├── medical-keywords.ts       # 200+ cardiology keyword regex engine
-│   │   ├── qdrant-client.ts           # Vector DB client (store + search + scroll)
+│   │   ├── qdrant-client.ts           # Vector DB client (store + search + scroll + update + delete)
 │   │   ├── pdf-export.ts             # Print-CSS PDF + prescription utilities
 │   │   ├── session.ts                # JWT auth: access + refresh token management
 │   │   └── middleware-session.ts     # Edge-compatible JWT helpers for middleware
@@ -165,6 +172,9 @@ notER/
 ├── .env                               # Environment variables
 ├── next.config.ts                     # Next.js config (CORS for localtunnel)
 ├── test-runner.mjs                    # Automated backend test suite (16 tests)
+├── test-encryption.mjs                # Encryption module test suite
+├── test-qdrant-encryption.mjs         # Qdrant + encryption integration tests
+├── test-session-jwe.mjs               # JWT/JWE session test suite
 ├── test.md                            # Full 60-iteration test documentation
 └── package.json
 ```
@@ -178,14 +188,14 @@ notER/
 - **Node.js** v18+
 - **npm** v9+
 - A **Vapi** account → [vapi.ai](https://vapi.ai)
-- A **KodeKloud AI** API key (OpenAI-compatible)
+- A **KodeKloud AI** API key → [ai.kodekloud.com](https://ai.kodekloud.com) *(OpenAI-compatible, powers Gemini)*
 - A **Qdrant** cloud account → [cloud.qdrant.io](https://cloud.qdrant.io) *(optional)*
 
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/Uddhar204/NoteR--Clincial-Transcription-AI.git
-cd NoteR--Clincial-Transcription-AI
+git clone https://github.com/adhipatya3552/NotER-AI-Clinical-Copilot.git
+cd NotER--Clincial-Transcription-AI
 npm install
 ```
 
@@ -227,23 +237,28 @@ Password: 12341234
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_VAPI_PUBLIC_KEY` | ✅ Yes | From Vapi Dashboard |
-| `NEXT_PRIVATE_VAPI_PRIVATE_KEY` | Optional | Vapi private key |
-| `KODEKLOUD_API_KEY` | ✅ Yes | KodeKloud AI key (starts with `sk-`) |
-| `QDRANT_URL` | Optional | Qdrant cluster URL |
-| `QDRANT_API_KEY` | Optional | Qdrant JWT API key |
+| `NEXT_PUBLIC_VAPI_PUBLIC_KEY` | ✅ Yes | Vapi public key from [dashboard.vapi.ai](https://dashboard.vapi.ai) |
+| `NEXT_PUBLIC_VAPI_ASSISTANT_ID` | ✅ Yes | Vapi Assistant ID — the pre-configured silent assistant |
+| `NEXT_PRIVATE_VAPI_PRIVATE_KEY` | Optional | Vapi private/server key (for server-side API calls) |
+| `GEMINI_API_KEY` | ✅ Yes | KodeKloud AI API key (starts with `sk-`). Powers Gemini via OpenAI-compatible endpoint |
+| `QDRANT_URL` | Optional | Qdrant cloud cluster URL (e.g. `https://xxx.aws.cloud.qdrant.io`) |
+| `QDRANT_API_KEY` | Optional | Qdrant JWT API key for authentication |
 | `DOCTOR_EMAIL` | ✅ Yes | Login email for the doctor account |
 | `DOCTOR_PASSWORD` | ✅ Yes | Login password for the doctor account |
-| `SESSION_SECRET` | ✅ Yes | Secret key for signing access JWTs |
-| `SESSION_REFRESH_SECRET` | ✅ Yes | Separate secret for signing refresh JWTs |
+| `SESSION_SECRET` | ✅ Yes | 64-char hex secret for signing access JWTs |
+| `SESSION_REFRESH_SECRET` | ✅ Yes | 64-char hex secret for signing refresh JWTs (must differ from `SESSION_SECRET`) |
+| `RECORD_ENCRYPTION_SECRET` | ✅ Yes | 64-char hex key (32 bytes) for AES-256-GCM patient record encryption |
+| `NEXT_PUBLIC_DEFAULT_EMAIL` | Optional | Pre-fills the email field on the login page (convenience for dev) |
 
-> If `QDRANT_URL` is not set, the memory feature silently skips. All other features still work.
+> If `QDRANT_URL` is not set, the memory/dashboard features silently skip. All other features still work.
+>
+> Generate hex secrets with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
 
 ---
 
 ## 🔐 Authentication System
 
-notER uses a production-grade JWT authentication system with the following architecture:
+NotER uses a production-grade JWT authentication system with the following architecture:
 
 ### Token Strategy
 
@@ -299,10 +314,10 @@ Each new transcript segment is scanned against a 200+ term cardiology regex engi
 Doctor clicks **"End Consultation"**. Vapi stops. The full transcript is compiled and sent to `/api/generate-notes`.
 
 ### Step 6 — Report Generation
-The backend sends the raw transcript to **Gemini 3.1 Pro** via KodeKloud. The model extracts SOAP notes, prescriptions, and a summary — all returned as structured JSON.
+The backend sends the raw transcript to **Gemini 3.1 Pro** via KodeKloud's OpenAI-compatible API. The model extracts SOAP notes, prescriptions, and a summary — all returned as structured JSON.
 
-### Step 7 — Memory Storage
-The consultation (including patient name, SOAP notes, prescriptions, transcript) is permanently stored in **Qdrant**. The data is searchable from the dashboard.
+### Step 7 — Encryption & Memory Storage
+All sensitive fields (SOAP notes, prescriptions, transcript, summary) are **encrypted with AES-256-GCM** before being stored in **Qdrant**. Each encryption uses a unique random IV, preventing pattern analysis. Data is decrypted on-the-fly when retrieved for the dashboard.
 
 ### Step 8 — PDF Export
 Doctor can download the clinical report as a **crisp vector PDF** or print the prescription directly — both use browser-native rendering for professional quality.
@@ -377,6 +392,35 @@ Stores a consultation record in Qdrant with patient name, SOAP notes, prescripti
 ### `GET /api/records?search={query}`
 Fetches all consultation records for the dashboard. Supports optional semantic search filtering.
 
+### `PATCH /api/records/{id}`
+Updates an existing consultation record's editable fields (summary, SOAP notes, prescriptions, keywords). Re-encrypts updated content before storing.
+
+**Request:**
+```json
+{
+  "summary": "Updated summary...",
+  "soapNotes": "Updated SOAP text...",
+  "prescriptions": "Updated prescriptions text...",
+  "keywords": ["hypertension", "aspirin"]
+}
+```
+
+### `DELETE /api/records/{id}`
+Permanently deletes a consultation record from Qdrant.
+
+### `POST /api/translate`
+Translates Hindi/Hinglish medical text to English using Gemini.
+
+**Request:**
+```json
+{ "text": "Mujhe seene mein dard ho raha hai" }
+```
+
+**Response:**
+```json
+{ "translated": "I am having chest pain" }
+```
+
 ---
 
 ## 🎙️ Vapi Dashboard Setup
@@ -427,7 +471,7 @@ See [`test.md`](./test.md) — a 60-iteration test plan covering infrastructure,
 npx vercel
 ```
 
-Set **all** environment variables in **Vercel Dashboard → Settings → Environment Variables** (including `DOCTOR_EMAIL`, `DOCTOR_PASSWORD`, `SESSION_SECRET`, and `SESSION_REFRESH_SECRET`).
+Set **all** environment variables in **Vercel Dashboard → Settings → Environment Variables** (including `GEMINI_API_KEY`, `DOCTOR_EMAIL`, `DOCTOR_PASSWORD`, `SESSION_SECRET`, `SESSION_REFRESH_SECRET`, and `RECORD_ENCRYPTION_SECRET`).
 
 After deploying, update the **Vapi Server URL** from your localtunnel URL to:
 ```
@@ -452,7 +496,9 @@ https://your-app.vercel.app/api/vapi/webhook
 ## 🗺️ Roadmap
 
 - [x] Real-time voice transcription (Vapi + Deepgram)
-- [x] SOAP note generation (Gemini 3.1 Pro)
+- [x] SOAP note generation (Gemini 3 Flash via KodeKloud)
+- [x] AES-256-GCM field-level encryption for patient records
+- [x] Hindi/Hinglish → English medical translation
 - [x] Prescription extraction
 - [x] Medical keyword highlighting (200+ terms)
 - [x] PDF export and print prescription (vector quality)
