@@ -133,7 +133,11 @@ The doctor never touches a keyboard during the consultation. The AI silently tak
 ## 📁 Project Structure
 
 ```
+<<<<<<< HEAD
 NotER/
+=======
+NotER-AI-Clinical-Copilot/
+>>>>>>> 4a2fe9c8acc5468abfd840cac43fe58eff1bdce8
 ├── src/
 │   ├── app/
 │   │   ├── api/
@@ -195,7 +199,11 @@ NotER/
 
 ```bash
 git clone https://github.com/adhipatya3552/NotER-AI-Clinical-Copilot.git
+<<<<<<< HEAD
 cd NotER--Clincial-Transcription-AI
+=======
+cd NotER-AI-Clinical-Copilot
+>>>>>>> 4a2fe9c8acc5468abfd840cac43fe58eff1bdce8
 npm install
 ```
 
